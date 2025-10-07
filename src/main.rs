@@ -2,6 +2,9 @@
 //!
 //! crunch seamlessly integrates cutting-edge hardware into your local development environment.
 
+
+mod config;
+use config::AppConfig;
 use cargo_metadata::camino::Utf8PathBuf;
 use clap::{command, Parser, ValueEnum};
 use log::{debug, error, info};
@@ -37,15 +40,31 @@ enum RemotePathBehavior {
     version,
     about,
     trailing_var_arg = true,
-    after_long_help = "EXAMPLES:\n    crunch -e RUST_LOG=debug check --all-features --all-targets\n    crunch test -- --nocapture"
+    after_long_help = "EXAMPLES:\n    crunch -v build --release\n    crunch -e RUST_LOG=debug check --all-features --all-targets\n    crunch test -- --nocapture"
 )]
 struct Args {
+    /// Verbose flag (must come before cargo command)
+    #[arg(short, long, global = true)]
+    verbose: bool,
+
+    /// Override timeout seconds for this run
+    #[arg(long, global = true)]
+    timeout_secs: Option<u64>,
+
+    /// Where crunch should place the project on the remote server.
+    #[arg(long = "remote-path", required = false, default_value = "mirror", global = true)]
+    remote_path: RemotePathBehavior,
+
+    /// Optional: print final effective config and exit (debug)
+    #[arg(long, global = true)]
+    print_config: bool,
     /// Set remote environment variables. RUST_BACKTRACE, CC, LIB, etc.
     #[arg(
         short = 'e',
         long,
         required = false,
-        default_value = "RUST_BACKTRACE=1"
+        default_value = "RUST_BACKTRACE=1",
+        global = true
     )]
     build_env: String,
 
@@ -59,26 +78,23 @@ struct Args {
         long = "exclude",
         required = false,
         value_delimiter = ',',
-        default_value = "target,.git"
+        default_value = "target,.git",
+        global = true
     )]
     exclude: Vec<String>,
 
     /// A command to execute on the machine after the cargo command has finished executing.
     ///
     /// Example: `--post-cargo "cd target/release && profile my-binary"`
-    #[arg(long = "post-cargo", required = false)]
+    #[arg(long = "post-cargo", required = false, global = true)]
     post_cargo: Option<String>,
 
     /// Path or directory to sync back from the remote server after all other work has been done.
     /// Each entry should be in the format `source:destination`. Specify multiple entries using delimiter ','.
     ///
     /// Example: `--copy-back "./target/release/cuter-cat.png:.,*.bin:~/my-bins"`
-    #[arg(long = "copy-back", required = false, value_delimiter = ',')]
+    #[arg(long = "copy-back", required = false, value_delimiter = ',', global = true)]
     copy_back: Vec<String>,
-
-    /// Where crunch should place the project on the remote server.
-    #[arg(long = "remote-path", required = false, default_value = "mirror")]
-    remote_path: RemotePathBehavior,
 
     /// The cargo command to execute
     ///
@@ -86,7 +102,6 @@ struct Args {
     #[arg(required = true, num_args = 1..)]
     command: Vec<String>,
 }
-
 fn uid_from_path(path: &Utf8PathBuf) -> u64 {
     let mut hasher = DefaultHasher::new();
     path.as_str().hash(&mut hasher);
@@ -94,12 +109,71 @@ fn uid_from_path(path: &Utf8PathBuf) -> u64 {
 }
 
 fn main() {
+    
+    let cfg = AppConfig::load_config()
+        .unwrap_or_else(|e| {
+            eprintln!("Warning: Failed to load configuration: {}", e);
+            eprintln!("Using default values...");
+            // Return defaults if config loading fails
+            AppConfig {
+                remote_path: "mirror".to_string(),
+                timeout_secs: 30,
+                verbose: false,
+                exclude: "target,.git".to_string(),
+                build_env: "RUST_BACKTRACE=1".to_string(),
+            }
+        });
+
+    // Parse command line args - these will override config
+    let mut args = Args::parse();
+
+    // Apply config values if CLI args are at their defaults
+    if args.remote_path.matches_default() {
+        args.remote_path = parse_remote_path_behavior(&cfg.remote_path);
+    }
+
+    if args.timeout_secs.is_none() {
+        args.timeout_secs = Some(cfg.timeout_secs);
+    }
+
+    if !args.verbose {
+        args.verbose = cfg.verbose;
+    }
+
+    if args.exclude.len() == 2 && args.exclude[0] == "target" && args.exclude[1] == ".git" {
+        args.exclude = cfg.exclude.split(',').map(|s| s.trim().to_string()).collect();
+    }
+
+    if args.build_env == "RUST_BACKTRACE=1" {
+        args.build_env = cfg.build_env.clone();
+    }
+
+    // Initialize logger after merging verbose flag
+    let log_level = if args.verbose {
+        log::LevelFilter::Debug
+    } else {
+        log::LevelFilter::Info
+    };
+
     env_logger::builder()
-        .filter_level(log::LevelFilter::Info)
+        .filter_level(log_level)
         .init();
 
-    let args = Args::parse();
-    debug!("{:?}", &args);
+    debug!("Loaded config: {:?}", &cfg);
+    debug!("Final args after config merge: {:?}", &args);
+
+    // Handle --print-config flag
+    if args.print_config {
+        println!("Final effective configuration:");
+        println!("  remote_path: {:?}", args.remote_path);
+        println!("  timeout_secs: {:?}", args.timeout_secs);
+        println!("  verbose: {}", args.verbose);
+        println!("  exclude: {:?}", args.exclude);
+        println!("  build_env: {}", args.build_env);
+        println!("  command: {:?}", args.command);
+        return;
+    }
+
 
     let copy_back_pairs: Vec<(String, String)> = args
         .copy_back
@@ -185,6 +259,41 @@ fn main() {
     args.exclude.iter().for_each(|exclude| {
         rsync_to.arg("--exclude").arg(exclude);
     });
+
+
+    debug!("Project directory: {}", project_dir);
+    debug!("Build server: {}", build_server);
+    debug!("Build path: {}", build_path);
+    debug!("Remote SSH port: {}", remote.ssh_port);
+
+    info!("Transferring sources to remote: {}", build_path);
+    
+    // Test SSH connectivity first
+    debug!("Testing SSH connection to {}...", build_server);
+    let ssh_test = Command::new("ssh")
+        .args(["-p", &remote.ssh_port.to_string()])
+        .arg("-o")
+        .arg("ConnectTimeout=5")
+        .arg(&build_server)
+        .arg("echo 'SSH connection successful'")
+        .output();
+    
+    match ssh_test {
+        Ok(output) if output.status.success() => {
+            debug!("SSH connection test passed");
+        }
+        Ok(output) => {
+            error!("SSH connection failed with exit code: {}", output.status);
+            error!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+            eprintln!("\nHint: Make sure you can connect with: ssh -p {} {}", remote.ssh_port, build_server);
+            exit(-3);
+        }
+        Err(e) => {
+            error!("Failed to execute SSH command: {}", e);
+            eprintln!("\nHint: Make sure 'ssh' is installed and in your PATH");
+            exit(-3);
+        }
+    }
 
     let rsync_path_arg = format!("mkdir -p {build_path} && rsync");
 
@@ -371,4 +480,25 @@ fn extract_manifest_path_works() {
     // Test none
     let args = vec!["build".to_string(), "--release".to_string()];
     assert_eq!(extract_manifest_path(&args), None);
+}
+
+
+// Helper function to parse remote_path string into enum
+fn parse_remote_path_behavior(s: &str) -> RemotePathBehavior {
+    match s.to_lowercase().as_str() {
+        "mirror" => RemotePathBehavior::Mirror,
+        "tmp" => RemotePathBehavior::Tmp,
+        "unique" => RemotePathBehavior::Unique,
+        _ => {
+            eprintln!("Warning: Unknown remote_path value '{}', using 'mirror'", s);
+            RemotePathBehavior::Mirror
+        }
+    }
+}
+
+// Add this helper trait for RemotePathBehavior
+impl RemotePathBehavior {
+    fn matches_default(&self) -> bool {
+        matches!(self, RemotePathBehavior::Mirror)
+    }
 }
