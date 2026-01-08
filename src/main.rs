@@ -4,6 +4,7 @@
 
 use cargo_metadata::camino::Utf8PathBuf;
 use clap::{command, Parser, ValueEnum};
+use which::which;
 use log::{debug, error, info};
 use std::{
     hash::{DefaultHasher, Hash, Hasher},
@@ -169,6 +170,13 @@ fn main() {
         }
         RemotePathBehavior::Mirror => project_dir.to_string(),
     };
+
+    // check if rsync is installed / in $PATH
+    which("rsync")
+        .unwrap_or_else(|e| {
+            error!("rsync not found (error: {})", e);
+            exit(-7)
+        });
 
     info!("Transferring sources to remote: {}", build_path);
     let mut rsync_to = Command::new("rsync");
