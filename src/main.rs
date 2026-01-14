@@ -3,8 +3,7 @@
 //! crunch seamlessly integrates cutting-edge hardware into your local development environment.
 
 use cargo_metadata::camino::Utf8PathBuf;
-use clap::{command, Parser, ValueEnum};
-use which::which;
+use clap::{Parser, ValueEnum};
 use log::{debug, error, info};
 use std::{
     hash::{DefaultHasher, Hash, Hasher},
@@ -13,6 +12,7 @@ use std::{
     thread,
     time::{SystemTime, UNIX_EPOCH},
 };
+use which::which;
 
 #[derive(Debug, Clone)]
 pub struct Remote {
@@ -172,11 +172,10 @@ fn main() {
     };
 
     // check if rsync is installed / in $PATH
-    which("rsync")
-        .unwrap_or_else(|e| {
-            error!("rsync not found in $PATH, please install it (error: {})", e);
-            exit(-7)
-        });
+    which("rsync").unwrap_or_else(|e| {
+        error!("rsync not found in $PATH, please install it (error: {})", e);
+        exit(-7)
+    });
 
     info!("Transferring sources to remote: {}", build_path);
     let mut rsync_to = Command::new("rsync");
@@ -221,9 +220,7 @@ fn main() {
 
     // Add the post_cargo command to the build_command, if it exists
     let command = if let Some(post_cargo) = args.post_cargo {
-        format!(
-            "{build_command} && echo Executing post-cargo command && {post_cargo}"
-        )
+        format!("{build_command} && echo Executing post-cargo command && {post_cargo}")
     } else {
         build_command
     };

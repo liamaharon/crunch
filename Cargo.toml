@@ -1,6 +1,6 @@
 [package]
 name = "crunch-app"
-version = "0.0.12"
+version = "0.0.13"
 edition = "2021"
 description = "Turbocharge your Rust workflow with crunch"
 license = "MIT"
