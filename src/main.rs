@@ -174,7 +174,7 @@ fn main() {
     // check if rsync is installed / in $PATH
     which("rsync")
         .unwrap_or_else(|e| {
-            error!("rsync not found (error: {})", e);
+            error!("rsync not found in $PATH, please install it (error: {})", e);
             exit(-7)
         });
 
