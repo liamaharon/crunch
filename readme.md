@@ -130,8 +130,6 @@ Precedence:
 1. `crunch.config.toml`
 2. CLI flags
 
-For list options such as `exclude` and `copy_back`, CLI values replace the config file values.
-
 ```toml
 build_env = "RUST_BACKTRACE=1"
 exclude = ["target", ".git"]
