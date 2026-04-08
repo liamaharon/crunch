@@ -124,7 +124,7 @@ EXAMPLES:
 
 `crunch` automatically looks for `crunch.config.toml` in the Cargo workspace root and uses it for project-level defaults.
 
-On the first `crunch` run in a workspace, `crunch` creates this file automatically and prints:
+On the first `crunch` run in a workspace, `crunch` creates this file automatically.
 
 ```text
 New crunch workspace detected, initialised crunch config.
