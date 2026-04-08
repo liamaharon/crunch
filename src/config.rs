@@ -6,7 +6,7 @@ use std::{
     io::Write,
 };
 
-pub const CONFIG_FILE_NAME: &str = "crunch.config.toml";
+pub const CONFIG_FILE_NAME: &str = "crunch.toml";
 
 const DEFAULT_CONFIG_TEMPLATE: &str = r#"# Project-level defaults for crunch.
 # CLI flags override values from this file.
@@ -50,7 +50,7 @@ pub enum RemotePathBehavior {
     version,
     about,
     trailing_var_arg = true,
-    after_long_help = "CONFIG:\n    crunch automatically creates crunch.config.toml in the Cargo workspace root on first run.\n    CLI flags override config values.\n\nEXAMPLES:\n    crunch -e RUST_LOG=debug check --all-features --all-targets\n    crunch test -- --nocapture"
+    after_long_help = "CONFIG:\n    crunch automatically creates crunch.toml in the Cargo workspace root on first run.\n    CLI flags override config values.\n\nEXAMPLES:\n    crunch -e RUST_LOG=debug check --all-features --all-targets\n    crunch test -- --nocapture"
 )]
 pub struct CliArgs {
     /// Set remote environment variables. RUST_BACKTRACE, CC, LIB, etc.
@@ -307,7 +307,7 @@ fn resolve_args_replaces_config_lists_when_cli_sets_them() {
 fn config_path_uses_workspace_root() {
     let path = config_path(Utf8Path::new("/tmp/workspace"));
 
-    assert_eq!(path, Utf8PathBuf::from("/tmp/workspace/crunch.config.toml"));
+    assert_eq!(path, Utf8PathBuf::from("/tmp/workspace/crunch.toml"));
 }
 
 #[test]

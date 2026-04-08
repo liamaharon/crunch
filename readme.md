@@ -112,7 +112,7 @@ Options:
           Print version
 
 CONFIG:
-    crunch automatically creates crunch.config.toml in the Cargo workspace root on first run.
+    crunch automatically creates crunch.toml in the Cargo workspace root on first run.
     CLI flags override config values.
 
 EXAMPLES:
@@ -122,12 +122,12 @@ EXAMPLES:
 
 ## Project Config
 
-`crunch` automatically looks for `crunch.config.toml` in the Cargo workspace root and uses it for project-level defaults.
+`crunch` automatically looks for `crunch.toml` in the Cargo workspace root and uses it for project-level defaults.
 
 On the first `crunch` run in a workspace, `crunch` creates this file automatically.
 Precedence:
 
-1. `crunch.config.toml`
+1. `crunch.toml`
 2. CLI flags
 
 ```toml
