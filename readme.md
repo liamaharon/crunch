@@ -82,16 +82,10 @@ Options:
   -e, --build-env <BUILD_ENV>
           Set remote environment variables. RUST_BACKTRACE, CC, LIB, etc
 
-          [default: RUST_BACKTRACE=1]
-
       --exclude <EXCLUDE>
           Path or directory to exclude from the remote server transfer. Specify multiple entries using delimiter ','.
 
-          By default the `target` and `.git` directories are excluded.
-
           Example: `--exclude "target,.git,cat.png,*.lock,mocks/**/*.db"`
-
-          [default: target,.git]
 
       --post-cargo <POST_CARGO>
           A command to execute on the machine after the cargo command has finished executing.
@@ -106,8 +100,6 @@ Options:
       --remote-path <REMOTE_PATH>
           Specify the remote path behavior for builds
 
-          [default: mirror]
-
           Possible values:
           - mirror: Mirror the local directory structure on the remote server (default)
           - tmp:    Use a temporary directory that is cleaned up after the build
@@ -119,9 +111,31 @@ Options:
   -V, --version
           Print version
 
+CONFIG:
+    crunch automatically creates crunch.toml in the Cargo workspace root on first run.
+    CLI flags override config values.
+
 EXAMPLES:
     crunch -e RUST_LOG=debug check --all-features --all-targets
     crunch test -- --nocapture
+```
+
+## Project Config
+
+`crunch` automatically looks for `crunch.toml` in the Cargo workspace root and uses it for project-level defaults.
+
+On the first `crunch` run in a workspace, `crunch` creates this file automatically.
+Precedence:
+
+1. `crunch.toml`
+2. CLI flags
+
+```toml
+build_env = "RUST_BACKTRACE=1"
+exclude = ["target", ".git"]
+post_cargo = "cd target/release && profile my-binary"
+copy_back = ["./target/release/cuter-cat.png:."]
+remote_path = "mirror"
 ```
 
 ## `cargo-remote`
