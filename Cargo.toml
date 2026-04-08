@@ -1,6 +1,6 @@
 [package]
 name = "crunch-app"
-version = "0.0.13"
+version = "0.0.14"
 edition = "2021"
 description = "Turbocharge your Rust workflow with crunch"
 license = "MIT"
@@ -13,6 +13,7 @@ serde = { version = "1.0", features = ["derive"] }
 clap = { version = "4.5.21", default-features = true, features = ["derive"] }
 env_logger = "0.11.5"
 which = "8.0.0"
+toml = "0.8.19"
 
 [[bin]]
 name = "crunch"

@@ -2,8 +2,13 @@
 //!
 //! crunch seamlessly integrates cutting-edge hardware into your local development environment.
 
+mod config;
+
+use crate::config::{
+    ensure_config_exists, parse_copy_back_pairs, resolve_args, CliArgs, RemotePathBehavior,
+};
 use cargo_metadata::camino::Utf8PathBuf;
-use clap::{Parser, ValueEnum};
+use clap::Parser;
 use log::{debug, error, info};
 use std::{
     hash::{DefaultHasher, Hash, Hasher},
@@ -23,71 +28,6 @@ pub struct Remote {
     pub env: String,
 }
 
-#[derive(Debug, Clone, ValueEnum)]
-enum RemotePathBehavior {
-    /// Mirror the local directory structure on the remote server.
-    Mirror,
-    /// Create a directory in /tmp that is cleaned up when crunch finishes.
-    Tmp,
-    /// Use ~/crunch-builds.
-    Unique,
-}
-
-#[derive(Parser, Debug)]
-#[command(
-    version,
-    about,
-    trailing_var_arg = true,
-    after_long_help = "EXAMPLES:\n    crunch -e RUST_LOG=debug check --all-features --all-targets\n    crunch test -- --nocapture"
-)]
-struct Args {
-    /// Set remote environment variables. RUST_BACKTRACE, CC, LIB, etc.
-    #[arg(
-        short = 'e',
-        long,
-        required = false,
-        default_value = "RUST_BACKTRACE=1"
-    )]
-    build_env: String,
-
-    /// Path or directory to exclude from the remote server transfer.
-    /// Specify multiple entries using delimiter ','.
-    ///
-    /// By default the `target` and `.git` directories are excluded.
-    ///
-    /// Example: `--exclude "target,.git,cat.png,*.lock,mocks/**/*.db"`
-    #[arg(
-        long = "exclude",
-        required = false,
-        value_delimiter = ',',
-        default_value = "target,.git"
-    )]
-    exclude: Vec<String>,
-
-    /// A command to execute on the machine after the cargo command has finished executing.
-    ///
-    /// Example: `--post-cargo "cd target/release && profile my-binary"`
-    #[arg(long = "post-cargo", required = false)]
-    post_cargo: Option<String>,
-
-    /// Path or directory to sync back from the remote server after all other work has been done.
-    /// Each entry should be in the format `source:destination`. Specify multiple entries using delimiter ','.
-    ///
-    /// Example: `--copy-back "./target/release/cuter-cat.png:.,*.bin:~/my-bins"`
-    #[arg(long = "copy-back", required = false, value_delimiter = ',')]
-    copy_back: Vec<String>,
-
-    /// Where crunch should place the project on the remote server.
-    #[arg(long = "remote-path", required = false, default_value = "mirror")]
-    remote_path: RemotePathBehavior,
-
-    /// The cargo command to execute
-    ///
-    /// Example: `build --release`
-    #[arg(required = true, num_args = 1..)]
-    command: Vec<String>,
-}
-
 fn uid_from_path(path: &Utf8PathBuf) -> u64 {
     let mut hasher = DefaultHasher::new();
     path.as_str().hash(&mut hasher);
@@ -99,27 +39,19 @@ fn main() {
         .filter_level(log::LevelFilter::Info)
         .init();
 
-    let args = Args::parse();
-    debug!("{:?}", &args);
+    let cli_args = CliArgs::parse();
+    debug!("{:?}", &cli_args);
 
-    let copy_back_pairs: Vec<(String, String)> = args
-        .copy_back
-        .into_iter()
-        .filter_map(|entry| {
-            let mut parts = entry.splitn(2, ':');
-            match (parts.next(), parts.next()) {
-                (Some(source), Some(dest)) => Some((source.to_string(), dest.to_string())),
-                _ => {
-                    panic!("Invalid format for --copy-back entry: {entry}");
-                }
-            }
-        })
-        .collect();
+    let manifest_path = extract_manifest_path(&cli_args.command);
 
     // Run it once redirecting logs to terminal to ensure if something needs to be installed, user
     // sees it.
-    Command::new("cargo")
-        .args(["metadata", "--no-deps", "--format-version", "1"])
+    let mut metadata_probe = Command::new("cargo");
+    metadata_probe.args(["metadata", "--no-deps", "--format-version", "1"]);
+    if let Some(manifest_path) = manifest_path.as_ref() {
+        metadata_probe.arg("--manifest-path").arg(manifest_path);
+    }
+    metadata_probe
         .stderr(Stdio::inherit())
         .output()
         .unwrap_or_else(|e| {
@@ -128,11 +60,28 @@ fn main() {
         });
 
     // Now run it again to get the workspace_root.
-    let manifest_path = extract_manifest_path(&args.command).unwrap_or("Cargo.toml".to_string());
     let mut metadata_cmd = cargo_metadata::MetadataCommand::new();
-    metadata_cmd.manifest_path(manifest_path).no_deps();
+    metadata_cmd.no_deps();
+    if let Some(manifest_path) = manifest_path.as_ref() {
+        metadata_cmd.manifest_path(manifest_path);
+    }
     let project_metadata = metadata_cmd.exec().unwrap();
     let project_dir = project_metadata.workspace_root;
+    if ensure_config_exists(project_dir.as_ref()).unwrap_or_else(|message| {
+        error!("{}", message);
+        exit(-8);
+    }) {
+        println!("New crunch workspace detected, initialised crunch config.");
+    }
+    let args = resolve_args(cli_args, project_dir.as_ref()).unwrap_or_else(|message| {
+        error!("{}", message);
+        exit(-8);
+    });
+    debug!("{:?}", &args);
+    let copy_back_pairs = parse_copy_back_pairs(&args.copy_back).unwrap_or_else(|message| {
+        error!("{}", message);
+        exit(-9);
+    });
 
     let remote = Remote {
         name: "crunch".to_string(),
@@ -185,9 +134,7 @@ fn main() {
         .arg("--compress")
         .arg("-e")
         .arg(format!("ssh -p {}", remote.ssh_port))
-        .arg("--info=progress2")
-        .arg("--exclude")
-        .arg("target");
+        .arg("--info=progress2");
 
     args.exclude.iter().for_each(|exclude| {
         rsync_to.arg("--exclude").arg(exclude);
