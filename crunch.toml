@@ -1,0 +1,27 @@
+# Project-level defaults for crunch.
+# CLI flags override values from this file.
+# This file is discovered from the Cargo workspace root.
+
+# Environment variables exported before the remote cargo command runs.
+build_env = "RUST_BACKTRACE=1"
+
+# Paths or glob patterns to exclude when syncing the project to the remote host.
+exclude = ["target", ".git"]
+
+# Files or directories to copy back after the remote command finishes.
+# Each entry is in the form "source:destination".
+copy_back = []
+
+# Where crunch should place the project on the remote server.
+# Options:
+# - "mirror": mirror the local absolute path on the remote machine
+# - "tmp": create a temporary directory and remove it afterwards
+# - "unique": store the project under ~/crunch-builds/<name>-<hash>
+remote_path = "unique"
+
+# Reduce rsync and ssh log output.
+quiet = false
+
+# Optional command to run on the remote machine after cargo finishes.
+# Example:
+# post_cargo = "cd target/release && profile my-binary"

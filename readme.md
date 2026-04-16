@@ -101,9 +101,12 @@ Options:
           Specify the remote path behavior for builds
 
           Possible values:
-          - mirror: Mirror the local directory structure on the remote server (default)
+          - mirror: Mirror the local directory structure on the remote server
           - tmp:    Use a temporary directory that is cleaned up after the build
-          - unique: Use a unique persistent directory in the user's home directory for each project
+          - unique: Use a unique persistent directory in the user's home directory for each project (default)
+
+  -q, --quiet
+          Reduce rsync and ssh log output
 
   -h, --help
           Print help (see a summary with '-h')
@@ -117,6 +120,7 @@ CONFIG:
 
 EXAMPLES:
     crunch -e RUST_LOG=debug check --all-features --all-targets
+    crunch --quiet check
     crunch test -- --nocapture
 ```
 
@@ -135,7 +139,8 @@ build_env = "RUST_BACKTRACE=1"
 exclude = ["target", ".git"]
 post_cargo = "cd target/release && profile my-binary"
 copy_back = ["./target/release/cuter-cat.png:."]
-remote_path = "mirror"
+remote_path = "unique"
+quiet = false
 ```
 
 ## `cargo-remote`

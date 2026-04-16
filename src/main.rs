@@ -92,6 +92,11 @@ fn main() {
     };
 
     let build_server = remote.host;
+    let ssh_transport = if args.quiet {
+        format!("ssh -p {} -o LogLevel=ERROR", remote.ssh_port)
+    } else {
+        format!("ssh -p {}", remote.ssh_port)
+    };
 
     let build_path = match args.remote_path {
         RemotePathBehavior::Tmp => {
@@ -133,8 +138,11 @@ fn main() {
         .arg("--delete")
         .arg("--compress")
         .arg("-e")
-        .arg(format!("ssh -p {}", remote.ssh_port))
-        .arg("--info=progress2");
+        .arg(&ssh_transport);
+
+    if !args.quiet {
+        rsync_to.arg("--info=progress2");
+    }
 
     args.exclude.iter().for_each(|exclude| {
         rsync_to.arg("--exclude").arg(exclude);
@@ -171,9 +179,14 @@ fn main() {
     } else {
         build_command
     };
-    Command::new("ssh")
+    let mut remote_build = Command::new("ssh");
+    remote_build
         .env("LC_ALL", "C.UTF-8")
-        .args(["-p", &remote.ssh_port.to_string()])
+        .args(["-p", &remote.ssh_port.to_string()]);
+    if args.quiet {
+        remote_build.args(["-o", "LogLevel=ERROR"]);
+    }
+    remote_build
         .arg("-t")
         .arg(&build_server)
         .arg(command)
@@ -196,14 +209,15 @@ fn main() {
                 let errors = Arc::clone(&errors);
                 let build_server = build_server.clone();
                 let build_path = build_path.clone();
+                let ssh_transport = ssh_transport.clone();
+                let quiet = args.quiet;
                 thread::spawn(move || {
                     let mut rsync_back = Command::new("rsync");
                     rsync_back
                         .arg("-a")
                         .arg("--compress")
                         .arg("-e")
-                        .arg(format!("ssh -p {}", remote.ssh_port))
-                        .arg("--info=progress2")
+                        .arg(&ssh_transport)
                         .arg(format!(
                             "{}:{}/{}",
                             &build_server, build_path, remote_source
@@ -213,6 +227,10 @@ fn main() {
                         .stdout(Stdio::inherit())
                         .stderr(Stdio::inherit())
                         .stdin(Stdio::inherit());
+
+                    if !quiet {
+                        rsync_back.arg("--info=progress2");
+                    }
 
                     let output = rsync_back.output();
 
@@ -260,8 +278,12 @@ fn main() {
     if matches!(args.remote_path, RemotePathBehavior::Tmp) {
         info!("Cleaning up temporary directory on remote server...");
 
-        let cleanup_result = Command::new("ssh")
-            .args(["-p", &remote.ssh_port.to_string()])
+        let mut cleanup = Command::new("ssh");
+        cleanup.args(["-p", &remote.ssh_port.to_string()]);
+        if args.quiet {
+            cleanup.args(["-o", "LogLevel=ERROR"]);
+        }
+        let cleanup_result = cleanup
             .arg(&build_server)
             .arg(format!(
                 "cd '{build_path}' && cargo clean && rm -r '{build_path}'"
