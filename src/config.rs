@@ -27,7 +27,10 @@ copy_back = []
 # - "mirror": mirror the local absolute path on the remote machine
 # - "tmp": create a temporary directory and remove it afterwards
 # - "unique": store the project under ~/crunch-builds/<name>-<hash>
-remote_path = "mirror"
+remote_path = "unique"
+
+# Reduce rsync and ssh log output.
+quiet = false
 
 # Optional command to run on the remote machine after cargo finishes.
 # Example:
@@ -50,7 +53,7 @@ pub enum RemotePathBehavior {
     version,
     about,
     trailing_var_arg = true,
-    after_long_help = "CONFIG:\n    crunch automatically creates crunch.toml in the Cargo workspace root on first run.\n    CLI flags override config values.\n\nEXAMPLES:\n    crunch -e RUST_LOG=debug check --all-features --all-targets\n    crunch test -- --nocapture"
+    after_long_help = "CONFIG:\n    crunch automatically creates crunch.toml in the Cargo workspace root on first run.\n    CLI flags override config values.\n\nEXAMPLES:\n    crunch -e RUST_LOG=debug check --all-features --all-targets\n    crunch --quiet check\n    crunch test -- --nocapture"
 )]
 pub struct CliArgs {
     /// Set remote environment variables. RUST_BACKTRACE, CC, LIB, etc.
@@ -81,6 +84,10 @@ pub struct CliArgs {
     #[arg(long = "remote-path")]
     pub remote_path: Option<RemotePathBehavior>,
 
+    /// Reduce rsync and ssh log output.
+    #[arg(short = 'q', long = "quiet", num_args = 0..=1, default_missing_value = "true")]
+    pub quiet: Option<bool>,
+
     /// The cargo command to execute
     ///
     /// Example: `build --release`
@@ -98,6 +105,8 @@ struct CrunchConfig {
     #[serde(default)]
     copy_back: Vec<String>,
     remote_path: RemotePathBehavior,
+    #[serde(default)]
+    quiet: bool,
 }
 
 #[derive(Debug)]
@@ -107,6 +116,7 @@ pub struct ResolvedArgs {
     pub post_cargo: Option<String>,
     pub copy_back: Vec<String>,
     pub remote_path: RemotePathBehavior,
+    pub quiet: bool,
     pub command: Vec<String>,
 }
 
@@ -154,6 +164,7 @@ fn merge_args(cli: CliArgs, config: CrunchConfig) -> ResolvedArgs {
         post_cargo: cli.post_cargo.or(config.post_cargo),
         copy_back: cli.copy_back.unwrap_or(config.copy_back),
         remote_path: cli.remote_path.unwrap_or(config.remote_path),
+        quiet: cli.quiet.unwrap_or(config.quiet),
         command: cli.command,
     }
 }
@@ -184,6 +195,7 @@ fn test_cli_args() -> CliArgs {
         post_cargo: None,
         copy_back: None,
         remote_path: None,
+        quiet: None,
         command: vec!["build".to_string()],
     }
 }
@@ -211,6 +223,7 @@ exclude = ["dist"]
 post_cargo = "echo done"
 copy_back = ["target/release/app:./bin"]
 remote_path = "unique"
+quiet = true
 "#,
     )
     .unwrap();
@@ -223,6 +236,7 @@ remote_path = "unique"
         vec!["target/release/app:./bin".to_string()]
     );
     assert_eq!(config.remote_path, RemotePathBehavior::Unique);
+    assert!(config.quiet);
 }
 
 #[test]
@@ -234,7 +248,7 @@ fn parse_config_rejects_unknown_fields() {
 
 #[test]
 fn parse_config_requires_core_fields() {
-    let error = parse_config("exclude = [\"target\"]\nremote_path = \"mirror\"").unwrap_err();
+    let error = parse_config("exclude = [\"target\"]\nremote_path = \"unique\"").unwrap_err();
 
     assert!(error.to_string().contains("missing field `build_env`"));
 }
@@ -249,6 +263,7 @@ fn resolve_args_uses_config_when_cli_is_missing() {
             post_cargo: Some("echo done".to_string()),
             copy_back: vec!["target/release/app:./bin".to_string()],
             remote_path: RemotePathBehavior::Unique,
+            quiet: true,
         },
     );
 
@@ -257,6 +272,7 @@ fn resolve_args_uses_config_when_cli_is_missing() {
     assert_eq!(args.post_cargo.as_deref(), Some("echo done"));
     assert_eq!(args.copy_back, vec!["target/release/app:./bin".to_string()]);
     assert_eq!(args.remote_path, RemotePathBehavior::Unique);
+    assert!(args.quiet);
 }
 
 #[test]
@@ -265,6 +281,7 @@ fn resolve_args_prefers_cli_over_config() {
     cli.build_env = Some("RUST_LOG=trace".to_string());
     cli.post_cargo = Some("echo cli".to_string());
     cli.remote_path = Some(RemotePathBehavior::Tmp);
+    cli.quiet = Some(false);
 
     let args = merge_args(
         cli,
@@ -274,12 +291,14 @@ fn resolve_args_prefers_cli_over_config() {
             post_cargo: Some("echo config".to_string()),
             copy_back: vec!["target/release/app:./bin".to_string()],
             remote_path: RemotePathBehavior::Unique,
+            quiet: true,
         },
     );
 
     assert_eq!(args.build_env, "RUST_LOG=trace");
     assert_eq!(args.post_cargo.as_deref(), Some("echo cli"));
     assert_eq!(args.remote_path, RemotePathBehavior::Tmp);
+    assert!(!args.quiet);
 }
 
 #[test]
@@ -296,6 +315,7 @@ fn resolve_args_replaces_config_lists_when_cli_sets_them() {
             post_cargo: None,
             copy_back: vec!["config:dest".to_string()],
             remote_path: RemotePathBehavior::Mirror,
+            quiet: false,
         },
     );
 
