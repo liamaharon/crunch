@@ -186,7 +186,10 @@ fn main() {
     if args.quiet {
         remote_build.args(["-o", "LogLevel=ERROR"]);
     }
-    remote_build
+    // `ssh -t` exits with the remote command's own status, so this carries
+    // cargo's exit code. Hold on to it and replay it as our own exit code at
+    // the end of main, after copy-back and cleanup have had their turn.
+    let remote_status = remote_build
         .arg("-t")
         .arg(&build_server)
         .arg(command)
@@ -197,7 +200,8 @@ fn main() {
         .unwrap_or_else(|e| {
             error!("Failed to run cargo command remotely (error: {})", e);
             exit(-5);
-        });
+        })
+        .status;
 
     if !copy_back_pairs.is_empty() {
         info!("Transferring artifacts back to the local machine.");
@@ -308,6 +312,17 @@ fn main() {
                 debug!("Warning: Could not run cleanup command (error: {})", e);
             }
         }
+    }
+
+    // Surface a failed cargo run to our caller. Without this every crunch
+    // invocation exits 0, so `crunch test && ...`, CI steps, and hooks all read
+    // a failing build as a passing one.
+    //
+    // ssh reports its own connection failures as 255, which is indistinguishable
+    // from a remote process that genuinely exited 255. cargo does not use 255,
+    // so treating it as failure is right either way.
+    if !remote_status.success() {
+        exit(remote_status.code().unwrap_or(-5));
     }
 }
 
