@@ -150,12 +150,3 @@ quiet = false
 - Just replace `cargo` with `crunch`
 - Minimal configuration (just set a host in `~/.ssh/config`)
 
-## Star History
-
-<a href="https://www.star-history.com/?type=date&repos=liamaharon%2Fcrunch-cli">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=liamaharon/crunch-cli&type=date&theme=dark&legend=top-left&sealed_token=FXrxOmbMBp3Bd_KqoYfhqY_0yrHNzLikO0PMg1KJWzvFM3V0FtrXRJPUTZTLHlrIImK-Wk6C1N7nTSMtOrR8MvQJnZL2OunbSetDg_HdPpO38ZeWYMWq6w" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=liamaharon/crunch-cli&type=date&legend=top-left&sealed_token=FXrxOmbMBp3Bd_KqoYfhqY_0yrHNzLikO0PMg1KJWzvFM3V0FtrXRJPUTZTLHlrIImK-Wk6C1N7nTSMtOrR8MvQJnZL2OunbSetDg_HdPpO38ZeWYMWq6w" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=liamaharon/crunch-cli&type=date&legend=top-left&sealed_token=FXrxOmbMBp3Bd_KqoYfhqY_0yrHNzLikO0PMg1KJWzvFM3V0FtrXRJPUTZTLHlrIImK-Wk6C1N7nTSMtOrR8MvQJnZL2OunbSetDg_HdPpO38ZeWYMWq6w" />
- </picture>
-</a>
